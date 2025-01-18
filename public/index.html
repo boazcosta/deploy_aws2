@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RiskVIA: Uma Aplicação Web Veicular</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <style>
+        #map { height: 500px; margin-top: 20px; }
+        .table-container { margin-top: 20px; }
+        .blinking {
+            animation: blink-animation 1s steps(5, start) infinite;
+        }
+        @keyframes blink-animation {
+            to {
+                visibility: hidden;
+            }
+        }
+    </style>
+</head>
+<body class="bg-light">
+
+    <div class="container py-4">
+        <h1 class="text-center text-primary">RiskVIA: Uma Aplicação Web Veicular</h1>
+        <p class="text-center text-muted">Selecione a origem, destino, tipo de transporte e horário para calcular o risco.</p>
+
+        <div class="card shadow p-4">
+            <form id="routeForm">
+                <div class="form-row">
+                    <div class="form-group col-md-3">
+                        <label for="origin">Origem</label>
+                        <select id="origin" class="form-control">
+                            <option value="" disabled selected>Selecione a origem</option>
+                        </select>
+                    </div>
+                    <div class="form-group col-md-3">
+                        <label for="destination">Destino</label>
+                        <select id="destination" class="form-control">
+                            <option value="" disabled selected>Selecione o destino</option>
+                        </select>
+                    </div>
+                    <div class="form-group col-md-3">
+                        <label for="transport">Tipo de Transporte</label>
+                        <select id="transport" class="form-control">
+                            <option value="" disabled selected>Selecione o transporte</option>
+                            <option value="carro">Carro</option>
+                            <option value="moto">Moto</option>
+                            <option value="caminhão">Caminhão</option>
+                            <option value="bicicleta">Bicicleta</option>
+                            <option value="pedestre">Pedestre</option>
+                        </select>
+                    </div>
+                    <div class="form-group col-md-3">
+                        <label for="horario">Horário</label>
+                        <select id="horario" class="form-control">
+                            <option value="" disabled selected>Selecione o horário</option>
+                        </select>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Calcular Risco</button>
+            </form>
+        </div>
+
+        <div class="card shadow mt-4 p-4">
+            <h4 class="text-secondary">Resultados</h4>
+            <p><strong>Percentual de risco de acidentes:</strong> <span id="riskPercentage">-</span>%</p>
+            <div id="map" class="rounded shadow"></div>
+        </div>
+
+        <div class="table-container">
+            <h4 class="text-secondary">Horários com Mais e Menos Acidentes</h4>
+            <table class="table table-striped table-bordered">
+                <thead>
+                    <tr>
+                        <th>Via</th>
+                        <th>Horário com Mais Acidentes</th>
+                        <th>Horário com Menos Acidentes</th>
+                    </tr>
+                </thead>
+                <tbody id="horariosTable">
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script>
+        const map = L.map('map').setView([-19.9, -43.9], 6);
+
+        // Adicionar camada base
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 18,
+        }).addTo(map);
+
+        // Preencher listas de origem e destino
+        fetch('/api/enderecos')
+            .then(response => response.json())
+            .then(data => {
+                const originSelect = document.getElementById('origin');
+                const destinationSelect = document.getElementById('destination');
+
+                data.enderecos.forEach(address => {
+                    const option = document.createElement('option');
+                    option.value = address;
+                    option.textContent = address;
+
+                    originSelect.appendChild(option);
+
+                    const optionClone = option.cloneNode(true);
+                    destinationSelect.appendChild(optionClone);
+                });
+            })
+            .catch(error => {
+                console.error('Erro ao carregar endereços:', error);
+                alert('Erro ao carregar endereços. Tente novamente mais tarde.');
+            });
+
+        // Preencher lista de horários
+        fetch('/api/horarios-disponiveis')
+            .then(response => response.json())
+            .then(data => {
+                const horarioSelect = document.getElementById('horario');
+
+                data.horarios.forEach(horario => {
+                    const option = document.createElement('option');
+                    option.value = horario;
+                    option.textContent = horario;
+                    horarioSelect.appendChild(option);
+                });
+            })
+            .catch(error => {
+                console.error('Erro ao carregar horários:', error);
+                alert('Erro ao carregar horários. Tente novamente mais tarde.');
+            });
+
+        // Preencher tabela de horários com mais e menos acidentes
+        fetch('/api/horarios')
+            .then(response => response.json())
+            .then(data => {
+                const tableBody = document.getElementById('horariosTable');
+                tableBody.innerHTML = `
+                    <tr>
+                        <td>Via Costeira</td>
+                        <td>${data.viaCosteira.maisAcidentes[0]} (${data.viaCosteira.maisAcidentes[1]} acidentes)</td>
+                        <td>${data.viaCosteira.menosAcidentes[0]} (${data.viaCosteira.menosAcidentes[1]} acidentes)</td>
+                    </tr>
+                    <tr>
+                        <td>Via Mineira</td>
+                        <td>${data.viaMineira.maisAcidentes[0]} (${data.viaMineira.maisAcidentes[1]} acidentes)</td>
+                        <td>${data.viaMineira.menosAcidentes[0]} (${data.viaMineira.menosAcidentes[1]} acidentes)</td>
+                    </tr>
+                `;
+            })
+            .catch(error => {
+                console.error('Erro ao carregar horários mais e menos movimentados:', error);
+                alert('Erro ao carregar dados de horários. Tente novamente mais tarde.');
+            });
+
+        // Submeter o formulário
+        document.getElementById('routeForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            const origin = document.getElementById('origin').value;
+            const destination = document.getElementById('destination').value;
+            const transport = document.getElementById('transport').value;
+            const horario = document.getElementById('horario').value;
+
+            if (!origin || !destination || !transport || !horario) {
+                alert('Por favor, selecione uma origem, um destino, tipo de transporte e horário.');
+                return;
+            }
+
+            fetch(`/api/risco?origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&transport=${encodeURIComponent(transport)}&horario=${encodeURIComponent(horario)}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        alert(data.error);
+                        return;
+                    }
+
+                    document.getElementById('riskPercentage').textContent = data.risco;
+
+                    // Limpar marcadores anteriores
+                    map.eachLayer(layer => {
+                        if (layer instanceof L.Marker) map.removeLayer(layer);
+                    });
+
+                    // Adicionar marcadores piscantes no trajeto
+                    const points = data.trajeto;
+                    points.forEach(coord => {
+                        const marker = L.circleMarker(coord, {
+                            radius: 8,
+                            color: 'red',
+                            className: 'blinking' // Classe para piscamento
+                        }).addTo(map);
+                    });
+
+                    map.setView(points[0], 8); // Ajustar o zoom no trajeto
+                })
+                .catch(error => console.error('Erro ao calcular o risco:', error));
+        });
+    </script>
+</body>
+</html>
